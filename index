@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>處方引爆危機：消失的真相</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @keyframes fade-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(31, 41, 55, 0.5); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(75, 85, 99, 0.8); border-radius: 4px; }
+    
+    .prescription-item {
+        background: rgba(30, 41, 59, 0.4);
+        border: 1px solid rgba(71, 85, 105, 0.15);
+        transition: all 0.2s;
+    }
+    .item-highlight-purple { border-left: 3px solid #a855f7; background: rgba(168, 85, 247, 0.08); }
+    .item-highlight-blue { border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.08); }
+    .item-highlight-red { border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.08); }
+  </style>
+</head>
+<body>
+  
+  <audio id="bgmPlayer" loop>
+    <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+  </audio>
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const Icons = {
+      FileText: ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>,
+      Clock: ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      CheckCircle2: ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>,
+      XCircle: ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>,
+      Skull: ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20v2h8v-2"/><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"/></svg>,
+      ShieldAlert: ({ className="" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>,
+      Search: ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    };
+
+    class AudioEngine {
+      constructor() { this.ctx = null; }
+      init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      playTick() { this.init(); const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(800, this.ctx.currentTime); gain.gain.setValueAtTime(0.1, this.ctx.currentTime); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.05); }
+      playCorrect() { this.init(); [523, 659, 783].forEach((f, i) => { const o = this.ctx.createOscillator(); const g = this.ctx.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0, this.ctx.currentTime + i*0.1); g.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + i*0.1 + 0.05); o.connect(g); g.connect(this.ctx.destination); o.start(this.ctx.currentTime + i*0.1); o.stop(this.ctx.currentTime + i*0.1 + 0.4); }); }
+      playWrong() { this.init(); const o = this.ctx.createOscillator(); const g = this.ctx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(120, this.ctx.currentTime); g.gain.setValueAtTime(0.3, this.ctx.currentTime); g.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.4); o.connect(g); g.connect(this.ctx.destination); o.start(); o.stop(this.ctx.currentTime + 0.4); }
+      playExplosion() { this.init(); const o = this.ctx.createOscillator(); const g = this.ctx.createGain(); o.type='sine'; o.frequency.exponentialRampToValueAtTime(10, this.ctx.currentTime + 2); g.gain.setValueAtTime(0.5, this.ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 2); o.connect(g); g.connect(this.ctx.destination); o.start(); o.stop(this.ctx.currentTime + 2); }
+      startBGM() { this.init(); const bgm = document.getElementById('bgmPlayer'); if(bgm){ bgm.volume = 0.4; bgm.play().catch(e => console.log(e)); } }
+      stopBGM() { const bgm = document.getElementById('bgmPlayer'); if(bgm){ bgm.pause(); bgm.currentTime = 0; } }
+    }
+
+    const audio = new AudioEngine();
+    
+    const questions = [
+      { 
+        id: 1, title: "第一道鎖：偽裝的給藥途徑", 
+        context: "病患 73 歲肺癌女性。觀察處方第 7 項「Limeson 4mg」。系統途徑 PO，但備註：『加水含於口中5分鐘吐掉』。", 
+        question: "關於 Limeson 在此處方的真實意圖，下列何者正確？", 
+        options: [
+          { text: "A. 作為漱口水，以預防/治療化療引起的口腔黏膜炎。", isCorrect: true, feedback: "正確！這是標準的 Off-label use。" },
+          { text: "B. 此用法目的是為了治療口腔念珠菌感染，應建議改開 Nystatin。", isCorrect: false, feedback: "小心！念珠菌感染常用 Nystatin 漱口，但 Limeson 是類固醇，用於抗發炎而非抗真菌。" },
+          { text: "C. 此藥物應建議病患直接吞服以達到全身性抗發炎效果。", isCorrect: false, feedback: "錯誤！吞服將失去口腔局部的保護目的。" },
+          { text: "D. 讓藥物透過舌下吸收以快速緩解化療後的急性喘鳴。", isCorrect: false, feedback: "錯誤！Limeson (Dexa) 局部漱口並無此急救用途。" }
+        ] 
+      },
+      { 
+        id: 2, title: "第二道鎖：隱藏的免疫危機", 
+        context: "觀察處方第 3 項「VEMlidy 25mg」，這通常是用於 B 型肝炎的藥物。", 
+        question: "為何肺癌患者化療時需開立 VEMlidy？", 
+        options: [
+          { text: "A. 化療會引發免疫抑制，導致潛伏的 B 肝病毒活化 (HBV Reactivation)。", isCorrect: true, feedback: "沒錯！這是預防化療引起肝炎重症的關鍵。" },
+          { text: "B. TAF 具有獨特的抗腫瘤協同作用，能增強肺癌化療藥效。", isCorrect: false, feedback: "錯誤。TAF 僅針對 HBV 病毒，並無直接抗癌效果。" },
+          { text: "C. 為了治療病患目前正處於失代償期的急性肝臟衰竭。", isCorrect: false, feedback: "錯誤。急性肝衰竭通常需要更強效的點滴給藥，此處為預防性用途。" },
+          { text: "D. 配合處方中的 KenTamin (B群) 使用，預防藥物引起的周邊神經病變。", isCorrect: false, feedback: "完全無關，選項 D 是為了混淆神經保護觀念。" }
+        ] 
+      },
+      { 
+        id: 3, title: "第三道鎖：致命的劑量炸彈", 
+        context: "處方第 8 項「Xgeva 120mg」：『STAT, SC, 日數:3 / 總量:3』。", 
+        question: "Xgeva 用於癌症骨轉移的標準用法錯誤點為何？", 
+        options: [
+          { text: "A. 標準劑量為每 4 週施打 1 支。連續 3 天給予 3 支為極危險的給藥過量！", isCorrect: true, feedback: "正確！這會引發嚴重的電解質失衡風險。" },
+          { text: "B. Xgeva 是治療骨質疏鬆的藥物，劑量應為 60mg 每半年一次。", isCorrect: false, feedback: "這是 Prolia 的用法！Xgeva 劑量確實是 120mg，但頻率錯誤。" },
+          { text: "C. 此藥物必須以 IV 慢速滴注至少 15 分鐘，嚴禁皮下施打 (SC)。", isCorrect: false, feedback: "錯誤。Denosumab 確實是 SC 給藥，IV 反而是錯誤的。" },
+          { text: "D. 此藥物在首次使用前必須先進行 3 天的 Loading Dose 預給藥。", isCorrect: false, feedback: "錯誤。Xgeva 無須 Loading Dose，直接按月給藥即可。" }
+        ] 
+      },
+      { 
+        id: 4, title: "第四道鎖：生理的斷裂", 
+        context: "如果這 3 支 Xgeva 同時施打，對病患最危險的生理影響是什麼？", 
+        question: "Denosumab 短時間內急遽過量會立即引發：", 
+        options: [
+          { text: "A. 嚴重低血鈣症 (Hypocalcemia)，導致肌肉痙攣、心律不整甚至猝死。", isCorrect: true, feedback: "正確！它是最強力的蝕骨細胞抑制劑，過量會讓血鈣急墜。" },
+          { text: "B. 立即性的顎骨壞死 (ONJ)，導致下頷骨大面積暴露與感染。", isCorrect: false, feedback: "ONJ 是長期使用的副作用，而非急性過量的第一死因。" },
+          { text: "C. 急性高血鈣危象 (Hypercalcemia Crisis)，需立即補充生理食鹽水。", isCorrect: false, feedback: "剛好相反！它會降血鈣而非升血鈣。" },
+          { text: "D. 嚴重的橫紋肌溶解症 (Rhabdomyolysis) 併發急性腎衰竭。", isCorrect: false, feedback: "這不是 Denosumab 過量的典型直接病理反應。" }
+        ] 
+      },
+      { 
+        id: 5, title: "第五道鎖：偵探的邏輯推理", 
+        context: "為什麼醫囑會出現『日數3, 總量3支』這種點選法？這隱含了什麼系統性風險？", 
+        question: "在肺癌化療後，哪種藥物最常開立「連續皮下施打 3-5 天」？", 
+        options: [
+          { text: "A. 白血球生成素 (G-CSF)，用於預防化療後的嗜中性白血球低下。", isCorrect: true, feedback: "正確！這是最可能的 Click-alike 錯誤根源。" },
+          { text: "B. Leucovorin，作為 5-FU 或 MTX 化療後的解毒救援療法。", isCorrect: false, feedback: "Leucovorin 通常是 IV 或 PO，且作用機制完全不同。" },
+          { text: "C. 長效型胰島素，用於控制類固醇誘導的高血糖。", isCorrect: false, feedback: "胰島素雖然是 SC，但不會只開立「日數 3」。" },
+          { text: "D. 紅血球生成素 (EPO)，用於改善癌症相關貧血。", isCorrect: false, feedback: "EPO 給藥頻率通常是每週一次或三次，較少連續施打。" }
+        ] 
+      },
+      { 
+        id: 6, title: "最終真相：系統的幽靈", 
+        question: "身為偵探藥師，你認為這張錯誤處方產生的根本原因是什麼？", 
+        options: [
+          { text: "A. 醫師從常用清單點選時，誤將位置相鄰的 Xgeva 當作 G-CSF 開立。", isCorrect: true, feedback: "真相大白！藥師成功攔截了潛在的醫療過失。" },
+          { text: "B. 系統自動帶入了病患半年前的骨鬆治療紀錄，導致藥物重複開立。", isCorrect: false, feedback: "病患診斷為癌症，骨鬆紀錄不足以解釋「連續三天」的劑量。" },
+          { text: "C. 兩項藥物的發音極度相似 (Sound-alike)，導致醫師語音輸入錯誤。", isCorrect: false, feedback: "Xgeva 與 G-CSF 發音差異甚大，並非主因。" },
+          { text: "D. 藥袋列印系統異常，將「1 支每月」錯誤轉換為「3 支每日」。", isCorrect: false, feedback: "這是醫囑開立問題，非硬體列印錯誤。" }
+        ] 
+      }
+    ];
+
+    function App() {
+      const [gameState, setGameState] = useState('intro');
+      const [currentQIndex, setCurrentQIndex] = useState(0);
+      const [timeLeft, setTimeLeft] = useState(240); 
+      const [selectedOption, setSelectedOption] = useState(null);
+      const [showFeedback, setShowFeedback] = useState(false);
+      const [feedbackMsg, setFeedbackMsg] = useState("");
+      const [isCorrectFeedback, setIsCorrectFeedback] = useState(false);
+
+      useEffect(() => {
+        let timer;
+        if (gameState === 'playing' && timeLeft > 0) {
+          timer = setInterval(() => {
+            setTimeLeft((prev) => {
+              if (prev <= 10 && prev > 0) audio.playTick();
+              if (prev <= 1) { handleGameOver(false); return 0; }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+        return () => clearInterval(timer);
+      }, [gameState, timeLeft]);
+
+      const startGame = () => { audio.startBGM(); setGameState('playing'); setTimeLeft(240); setCurrentQIndex(0); setShowFeedback(false); setSelectedOption(null); };
+      const handleGameOver = (isWin) => { audio.stopBGM(); if (isWin) { audio.playCorrect(); setGameState('won'); } else { audio.playExplosion(); setGameState('lost'); } };
+
+      const handleOptionSelect = (idx, isCorrect, feedback) => {
+        if (showFeedback) return;
+        setSelectedOption(idx); setShowFeedback(true); setFeedbackMsg(feedback); setIsCorrectFeedback(isCorrect);
+        if (isCorrect) { audio.playCorrect(); setTimeout(() => { if (currentQIndex < questions.length - 1) { setCurrentQIndex(v => v + 1); setSelectedOption(null); setShowFeedback(false); } else { handleGameOver(true); } }, 2500); }
+        else { audio.playWrong(); setTimeLeft(p => Math.max(0, p - 30)); setTimeout(() => { setSelectedOption(null); setShowFeedback(false); }, 2500); }
+      };
+
+      if (gameState === 'intro') {
+        return (
+          <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden text-center">
+            <div className="absolute inset-0 opacity-10 pointer-events-none flex items-center justify-center">
+               <Icons.Search size={500} className="text-blue-500 animate-pulse" />
+            </div>
+            <div className="z-10 max-w-2xl bg-gray-900 border-2 border-blue-900/50 p-10 rounded-2xl shadow-[0_0_60px_rgba(30,58,138,0.4)] text-center">
+              <div className="flex justify-center mb-6">
+                <Icons.ShieldAlert className="text-blue-500 w-20 h-20" />
+              </div>
+              <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 mb-6 tracking-widest drop-shadow-lg">
+                處方引爆危機：消失的真相
+              </h1>
+              <p className="text-lg text-gray-300 mb-8 leading-relaxed text-left max-w-none">
+                「真相，永遠只有一個！」<br/><br/>
+                一張看似平常的日間化療門診處方箋，卻隱藏著足以奪命的開立錯誤。<br/>
+                身為臨床藥師，你必須在 <span className="text-red-400 font-bold">4 分鐘</span> 內解開這 6 道邏輯鎖，找出處方錯誤的「真正動機」，拯救病患的生命！
+              </p>
+              <button onClick={startGame} className="group relative px-10 py-4 bg-blue-700 hover:bg-blue-600 text-white font-bold text-xl rounded-full transition-all hover:scale-105 active:scale-95 overflow-hidden shadow-[0_0_20px_rgba(59,130,246,0.5)]">
+                <span className="relative z-10 flex items-center justify-center gap-2">開始推理 (啟動沉浸音效) <Icons.Search size={20}/></span>
+                <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -translate-x-full skew-x-12"></div>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="h-screen bg-slate-950 text-slate-200 p-4 md:p-6 flex flex-col md:flex-row gap-6 overflow-hidden font-sans">
+          
+          <div className="w-full md:w-[32%] flex flex-col gap-3 overflow-hidden h-full">
+            <div className="bg-slate-900/80 border border-slate-700/50 rounded-xl overflow-hidden shadow-xl shrink-0">
+              <div className="p-2 border-b border-slate-700/50 bg-slate-800/40 flex items-center gap-2">
+                <Icons.FileText size={10} className="text-slate-500" />
+                <span className="text-[8px] font-bold tracking-[0.2em] text-slate-500 uppercase">Patient Clinical Record</span>
+              </div>
+              <div className="p-3 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-[7px] text-slate-500 uppercase tracking-tighter">Patient / Age</div>
+                    <div className="text-lg font-bold text-slate-200 leading-none">陳 XX <span className="text-xs font-normal text-slate-400 ml-1">73y</span></div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[7px] text-slate-500 uppercase tracking-tighter">Weight</div>
+                    <div className="text-lg font-black text-orange-400 tracking-tight leading-none">46.2 kg</div>
+                  </div>
+                </div>
+                <div className="bg-red-950/10 border border-red-900/20 px-2.5 py-1.5 rounded-lg">
+                  <div className="text-[7px] text-red-500/80 font-bold uppercase tracking-widest">Diagnosis</div>
+                  <div className="text-red-400/90 font-bold text-sm leading-tight">Right Lung Malignant Neoplasm (C34.11)</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-700/50 rounded-xl flex flex-col flex-1 overflow-hidden shadow-xl">
+              <div className="p-2 border-b border-slate-700/50 bg-slate-800/40">
+                <span className="text-[8px] font-bold tracking-[0.2em] text-blue-400 uppercase">Prescription Details</span>
+              </div>
+              <div className="p-2 overflow-y-auto flex-1 custom-scrollbar space-y-1">
+                {[
+                  { n: "1. KenTamin (B1,B6,B12)", d: "1cap QD PO" },
+                  { n: "2. Folic Acid 5mg tab", d: "1tab QD PO" },
+                  { n: "3. VEMlidy 25mg (TAF)", d: "1tab QD PO", c: "item-highlight-purple" },
+                  { n: "4. Sennoside 12.5mg", d: "1tab HS PO" },
+                  { n: "5. Esmoprazole 40mg inj.", d: "1amp QD IV" },
+                  { n: "6. Aloxi 0.25mg inj.", d: "1amp QD IV" },
+                  { n: "7. Limeson 4mg (DEXA)", d: "1tab QD PO", c: "item-highlight-blue", sub: "備註：加水含於口中5分鐘吐掉" },
+                  { n: "8. Xgeva 120mg (Denosumab)", d: "1支 STAT SC", c: "item-highlight-red animate-pulse", sub: "備註：日數:3 / 總量:3" },
+                ].map((item, i) => (
+                  <div key={i} className={`p-2 rounded-lg prescription-item text-[11px] ${item.c || ''}`}>
+                    <div className="flex justify-between items-start">
+                      <span className={item.sub ? "font-bold text-slate-100" : "text-slate-300"}>{item.n}</span>
+                      <span className="text-[9px] text-slate-500 ml-1 whitespace-nowrap">{item.d}</span>
+                    </div>
+                    {item.sub && <div className={`text-[8px] mt-0.5 italic font-medium ${item.n.includes('Limeson') ? 'text-yellow-500/80' : 'text-red-500/80'}`}>{item.sub}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full md:w-[68%] flex flex-col gap-4 overflow-hidden h-full">
+             <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 flex justify-between items-center shadow-lg shrink-0">
+               <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">System Lock Status: {gameState === 'playing' ? (currentQIndex+1)+'/6' : 'FINAL REPORT'}</span>
+               {gameState === 'playing' && (
+                 <div className={`px-5 py-1.5 rounded-lg border font-mono text-2xl font-bold ${timeLeft < 60 ? 'border-red-500 text-red-500 animate-pulse bg-red-900/10' : 'border-slate-700 text-green-400'}`}>
+                   <Icons.Clock className="inline mr-2 mb-1" size={18}/>{Math.floor(timeLeft/60)}:{String(timeLeft%60).padStart(2,'0')}
+                 </div>
+               )}
+             </div>
+
+             <div className="flex-1 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden flex flex-col shadow-2xl relative">
+                {gameState === 'playing' ? (
+                  <div className="p-6 md:p-10 overflow-y-auto flex-1 custom-scrollbar">
+                    <div className="mb-8">
+                      <div className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.3em] mb-4">Case Analysis</div>
+                      <h2 className="text-2xl font-bold text-white mb-4 tracking-tight">{questions[currentQIndex].title}</h2>
+                      <p className="text-slate-400 mb-6 bg-slate-950/40 p-5 rounded-xl border border-slate-800/50 leading-relaxed text-sm">{questions[currentQIndex].context}</p>
+                      <p className="text-lg font-bold text-slate-100">{questions[currentQIndex].question}</p>
+                    </div>
+                    <div className="space-y-3 pb-10">
+                      {questions[currentQIndex].options.map((opt, i) => (
+                        <button key={i} onClick={()=>handleOptionSelect(i, opt.isCorrect, opt.feedback)} disabled={showFeedback}
+                          className={`w-full text-left p-4 rounded-xl border transition-all duration-300 text-sm ${selectedOption===i ? (opt.isCorrect ? 'border-green-500 bg-green-950/20' : 'border-red-500 bg-red-950/20') : 'border-slate-800 bg-slate-800/30 hover:border-slate-700'}`}>
+                          <div className="flex gap-3">
+                            <span className="shrink-0 mt-0.5">{selectedOption===i ? (opt.isCorrect ? <Icons.CheckCircle2 size={18} className="text-green-500"/> : <Icons.XCircle size={18} className="text-red-500"/>) : <div className="w-4 h-4 rounded-full border border-slate-600"/>}</span>
+                            <span>{opt.text}</span>
+                          </div>
+                          {showFeedback && selectedOption===i && <div className={`mt-3 p-3 rounded-lg text-[13px] animate-fade-in ${isCorrectFeedback?'text-green-400 bg-green-900/10':'text-red-400 bg-red-900/10'}`}>{feedbackMsg}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 md:p-12 text-center overflow-y-auto custom-scrollbar">
+                    {gameState==='won' ? (
+                      <div className="max-w-xl w-full animate-fade-in">
+                        <Icons.CheckCircle2 size={60} className="text-green-500 mx-auto mb-4" />
+                        <h2 className="text-3xl font-bold text-white mb-2 tracking-tighter uppercase">MISSION ACCOMPLISHED</h2>
+                        <p className="text-green-400/80 mb-6 font-mono text-xs tracking-widest">臨床偵探結案筆記</p>
+                        
+                        {/* 總結區塊 */}
+                        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-6 text-left space-y-4 mb-8 shadow-inner">
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase">Key Error</span>
+                                <p className="text-sm text-red-400 font-bold">Xgeva 120mg 每月 1 支誤植為連續 3 天給藥。</p>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase">Clinical Impact</span>
+                                <p className="text-sm text-slate-200">急性重度低血鈣風險，可能引發心律不整。</p>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase">Root Cause</span>
+                                <p className="text-sm text-slate-200">資訊系統 Click-alike (與 G-CSF 選項相鄰)。</p>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase">Off-label Mastery</span>
+                                <p className="text-sm text-slate-200">Limeson 漱口可用於預防化療引起之口腔黏膜炎。</p>
+                              </div>
+                           </div>
+                           <div className="pt-4 border-t border-slate-800">
+                             <p className="text-xs text-slate-400 leading-relaxed italic">
+                               「身為藥師，我們的雙眼是病患安全的最後一道防線。不僅要看對藥物名稱，更要洞察醫囑背後的臨床邏輯與系統陷阱。」
+                             </p>
+                           </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Icons.Skull size={80} className="text-red-500 mb-6" />
+                        <h2 className="text-3xl font-bold text-white mb-4 uppercase tracking-tighter">CASE CLOSED: FAILURE</h2>
+                        <p className="text-slate-400 mb-8 text-sm leading-relaxed">真相未能即時揭開，炸彈已引爆。<br/>請重新分析證據，再次挑戰系統攔截。</p>
+                      </>
+                    )}
+                    <button onClick={startGame} className="px-10 py-3 bg-blue-600 text-white font-bold rounded-full hover:bg-blue-500 transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)]">RESTART INVESTIGATION</button>
+                  </div>
+                )}
+             </div>
+          </div>
+        </div>
+      );
+    }
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
